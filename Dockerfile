@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y \
     libatlas-base-dev \
     libjpeg-dev \
     && pip install --upgrade pip \
+    && pip install numpy==1.24.3 \
     && pip install -r requirements.txt
 
 EXPOSE 8000
