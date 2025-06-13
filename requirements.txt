@@ -1,5 +1,8 @@
 fastapi
 uvicorn[standard]
-numpy
-pillow
 tensorflow
+pillow
+numpy
+pymongo
+geopy
+python-multipart
