@@ -8,11 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 import numpy as np
-from tflite_runtime.interpreter import Interpreter
-from tflite_runtime.interpreter import Interpreter  # type: ignore
-
 import platform
-
 import logging
 from logging.handlers import RotatingFileHandler
 from pymongo import MongoClient
@@ -20,7 +16,6 @@ import time
 from config import *
 from starlette.middleware.base import BaseHTTPMiddleware
 from collections import defaultdict
-
 import pytz
 from geopy.geocoders import Nominatim
 
@@ -44,7 +39,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# --- Setup geolocator for reverse geocoding ---
+# --- Setup geolocator ---
 geolocator = Nominatim(user_agent="chicken_disease_app")
 
 # --- MongoDB Configuration ---
@@ -71,7 +66,7 @@ app = FastAPI(
     redoc_url="/redoc" if DEBUG else None
 )
 
-# --- CORS Configuration ---
+# --- CORS ---
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
@@ -80,7 +75,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- Rate Limiting Middleware ---
+# --- Rate Limit Middleware ---
 class RateLimitMiddleware(BaseHTTPMiddleware):
     def __init__(self, app):
         super().__init__(app)
@@ -106,14 +101,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(RateLimitMiddleware)
 
-# --- Load Model and Label Map ---
+# --- Load Model and Labels ---
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "chicken_disease_efficientnetb4_model.tflite")
 LABEL_MAP_PATH = os.path.join(os.path.dirname(__file__), "label_map.json")
 
 try:
-    logger.info(f"Loading model from: {MODEL_PATH}")
-    logger.info(f"Loading label map from: {LABEL_MAP_PATH}")
-
     interpreter = Interpreter(model_path=MODEL_PATH)
     interpreter.allocate_tensors()
     input_details = interpreter.get_input_details()
@@ -122,13 +114,12 @@ try:
     with open(LABEL_MAP_PATH, "r") as f:
         label_map = {int(k): v for k, v in json.load(f).items()}
 
-    logger.info("Model loaded successfully")
-    logger.info(f"Label map loaded: {label_map}")
+    logger.info("Model and label map loaded successfully")
 except Exception as e:
-    logger.error(f"Error loading model or label map: {str(e)}")
+    logger.error(f"Failed to load model or labels: {str(e)}")
     raise
 
-# --- Health Check Endpoint ---
+# --- Health Check ---
 @app.get("/test")
 async def test():
     try:
@@ -145,63 +136,37 @@ async def test():
         logger.error(f"Health check failed: {str(e)}")
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
-# --- Prediction Logic ---
+# --- Prediction Core ---
 def run_prediction(image_path: str) -> Tuple[str, float, str, Dict[str, float]]:
     try:
         image = Image.open(image_path).convert("RGB")
-        
-        # Inspect input shape
-        input_shape = input_details[0]['shape']  # e.g. [1, 380, 380, 3]
-        logger.debug(f"Model input shape: {input_shape}")
-        
-        target_size = (input_shape[2], input_shape[1])  # (width, height)
+        input_shape = input_details[0]['shape']
+        target_size = (input_shape[2], input_shape[1])
         image = image.resize(target_size)
-        logger.debug(f"Resized image to: {target_size}")
 
-        # Convert to float32 and scale
         input_array = np.array(image, dtype=np.float32) / 255.0
-        logger.debug(f"Input array shape before normalization: {input_array.shape}, dtype: {input_array.dtype}")
-        
-        # Normalize using EfficientNetB4 mean/std
         mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
         std = np.array([0.229, 0.224, 0.225], dtype=np.float32)
-        
-        # Broadcast mean/std subtraction/division
         input_array = (input_array - mean) / std
-        logger.debug(f"Input array after normalization (sample values): {input_array[0,0,:]}")
-
-        # Add batch dimension
         input_array = np.expand_dims(input_array, axis=0)
-        logger.debug(f"Input array shape after expand_dims: {input_array.shape}")
 
-        # Set tensor and run inference
         interpreter.set_tensor(input_details[0]['index'], input_array)
         interpreter.invoke()
-
-        # Get output
         output_data = interpreter.get_tensor(output_details[0]['index'])[0]
-        logger.debug(f"Raw output data: {output_data}")
 
-        # Map class indices to labels and confidence
         class_probs = {label_map[i]: float(conf) for i, conf in enumerate(output_data)}
         sorted_probs = dict(sorted(class_probs.items(), key=lambda x: x[1], reverse=True))
 
         top_class = max(class_probs, key=class_probs.get)
         confidence = class_probs[top_class]
-        risk_level = (
-            "High" if confidence > 0.8 else
-            "Moderate" if confidence > 0.4 else
-            "Low"
-        )
+        severity = "High" if confidence > 0.8 else "Moderate" if confidence > 0.4 else "Low"
 
-        logger.info(f"Prediction: {top_class} with confidence: {confidence:.4f}")
-        return top_class, confidence, risk_level, sorted_probs
-
+        return top_class, confidence, severity, sorted_probs
     except Exception as e:
         logger.error(f"Prediction error: {str(e)}", exc_info=True)
         raise RuntimeError(f"Prediction failed: {str(e)}")
 
-
+# --- Prediction Endpoint ---
 @app.post("/predict")
 async def predict(
     request: Request,
@@ -218,7 +183,6 @@ async def predict(
             raise HTTPException(status_code=400, detail="File too large")
 
         os.makedirs(UPLOAD_DIR, exist_ok=True)
-
         filename = f"{uuid.uuid4().hex}{os.path.splitext(file.filename)[1]}"
         upload_path = os.path.join(UPLOAD_DIR, filename)
 
@@ -226,10 +190,8 @@ async def predict(
             buffer.write(content)
 
         prediction, confidence, severity, probabilities = run_prediction(upload_path)
-
         image_url = f"{API_BASE_URL}/static/uploads/{filename}"
 
-        # --- Reverse geocoding ---
         location_name = "Unknown Location"
         try:
             if latitude and longitude:
@@ -239,7 +201,6 @@ async def predict(
         except Exception as geo_err:
             logger.warning(f"Reverse geocoding failed: {str(geo_err)}")
 
-        # --- Get current time with timezone Asia/Manila ---
         tz = pytz.timezone("Asia/Manila")
         scanned_at = datetime.now(tz).isoformat()
 
@@ -263,7 +224,7 @@ async def predict(
                 logger.info(f"Saved to MongoDB with ID: {db_id}")
             except Exception as db_error:
                 logger.error(f"MongoDB insert failed: {str(db_error)}")
-                logger.error(f"Traceback: {traceback.format_exc()}")
+                logger.error(traceback.format_exc())
         else:
             logger.warning("Skipping database save - MongoDB not initialized")
 
@@ -282,8 +243,8 @@ async def predict(
         raise HTTPException(status_code=500, detail=str(re))
     except Exception as e:
         logger.error(f"Unhandled error: {str(e)}")
-        logger.error(f"Traceback: {traceback.format_exc()}")
+        logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
 
-# --- Static Files for Uploaded Images ---
+# --- Serve uploaded images ---
 app.mount("/static", StaticFiles(directory="static"), name="static")
