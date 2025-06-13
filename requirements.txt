@@ -1,6 +1,6 @@
 fastapi
 uvicorn[standard]
-tflite-runtime==2.12.0
+tflite-runtime==2.14.0
 pillow
 numpy
 pymongo
