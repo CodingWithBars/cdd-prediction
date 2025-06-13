@@ -1,0 +1,55 @@
+2025-06-13 15:11:07,553 - __main__ - INFO - Supabase client initialized successfully
+2025-06-13 15:11:07,555 - __main__ - INFO - Loading model from: D:\Project-repo\cdd-prediction\chicken_disease_model.tflite
+2025-06-13 15:11:07,555 - __main__ - INFO - Loading label map from: D:\Project-repo\cdd-prediction\label_map.json
+2025-06-13 15:11:07,605 - __main__ - ERROR - Error loading model or label map: Could not open 'D:\Project-repo\cdd-prediction\chicken_disease_model.tflite'.
+2025-06-13 15:11:07,607 - __main__ - ERROR - Traceback: Traceback (most recent call last):
+  File "D:\Project-repo\cdd-prediction\main.py", line 105, in <module>
+    interpreter = tf.lite.Interpreter(model_path=MODEL_PATH)
+  File "C:\Users\barro\AppData\Local\Programs\Python\Python310\lib\site-packages\tensorflow\lite\python\interpreter.py", line 455, in __init__
+    _interpreter_wrapper.CreateWrapperFromFile(
+ValueError: Could not open 'D:\Project-repo\cdd-prediction\chicken_disease_model.tflite'.
+
+2025-06-13 15:13:04,959 - __main__ - INFO - Supabase client initialized successfully
+2025-06-13 15:13:04,960 - __main__ - INFO - Loading model from: D:\Project-repo\cdd-prediction\chicken_disease_model.tflite
+2025-06-13 15:13:04,960 - __main__ - INFO - Loading label map from: D:\Project-repo\cdd-prediction\label_map.json
+2025-06-13 15:13:04,984 - __main__ - INFO - Model loaded successfully
+2025-06-13 15:13:04,986 - __main__ - INFO - Input details: [{'name': 'serving_default_keras_tensor_154:0', 'index': 0, 'shape': array([  1, 224, 224,   3]), 'shape_signature': array([ -1, 224, 224,   3]), 'dtype': <class 'numpy.float32'>, 'quantization': (0.0, 0), 'quantization_parameters': {'scales': array([], dtype=float32), 'zero_points': array([], dtype=int32), 'quantized_dimension': 0}, 'sparsity_parameters': {}}]
+2025-06-13 15:13:04,987 - __main__ - INFO - Output details: [{'name': 'StatefulPartitionedCall_1:0', 'index': 175, 'shape': array([1, 4]), 'shape_signature': array([-1,  4]), 'dtype': <class 'numpy.float32'>, 'quantization': (0.0, 0), 'quantization_parameters': {'scales': array([], dtype=float32), 'zero_points': array([], dtype=int32), 'quantized_dimension': 0}, 'sparsity_parameters': {}}]
+2025-06-13 15:13:04,987 - __main__ - INFO - Label map loaded: {0: 'Cocci', 1: 'Healthy', 2: 'Newcastle', 3: 'NonFecal', 4: 'Salmo'}
+2025-06-14 00:38:54,666 - main - INFO - Supabase client initialized successfully
+2025-06-14 00:38:54,674 - main - INFO - Loading model from: D:\Project-repo\cdd-prediction\chicken_disease_model.tflite
+2025-06-14 00:38:54,674 - main - INFO - Loading label map from: D:\Project-repo\cdd-prediction\label_map.json
+2025-06-14 00:38:54,716 - main - INFO - Model loaded successfully
+2025-06-14 00:38:54,724 - main - INFO - Input details: [{'name': 'serving_default_keras_tensor_154:0', 'index': 0, 'shape': array([  1, 224, 224,   3]), 'shape_signature': array([ -1, 224, 224,   3]), 'dtype': <class 'numpy.float32'>, 'quantization': (0.0, 0), 'quantization_parameters': {'scales': array([], dtype=float32), 'zero_points': array([], dtype=int32), 'quantized_dimension': 0}, 'sparsity_parameters': {}}]
+2025-06-14 00:38:54,724 - main - INFO - Output details: [{'name': 'StatefulPartitionedCall_1:0', 'index': 175, 'shape': array([1, 4]), 'shape_signature': array([-1,  4]), 'dtype': <class 'numpy.float32'>, 'quantization': (0.0, 0), 'quantization_parameters': {'scales': array([], dtype=float32), 'zero_points': array([], dtype=int32), 'quantized_dimension': 0}, 'sparsity_parameters': {}}]
+2025-06-14 00:38:54,724 - main - INFO - Label map loaded: {0: 'Cocci', 1: 'Healthy', 2: 'Newcastle', 3: 'NonFecal', 4: 'Salmo'}
+2025-06-14 00:57:44,590 - main - INFO - MongoDB connected successfully
+2025-06-14 00:57:44,592 - main - INFO - Loading model from: D:\Project-repo\cdd-prediction\chicken_disease_model.tflite
+2025-06-14 00:57:44,592 - main - INFO - Loading label map from: D:\Project-repo\cdd-prediction\label_map.json
+2025-06-14 00:57:44,617 - main - INFO - Model loaded successfully
+2025-06-14 00:57:44,617 - main - INFO - Label map loaded: {0: 'Cocci', 1: 'Healthy', 2: 'Newcastle', 3: 'NonFecal', 4: 'Salmo'}
+2025-06-14 02:18:48,376 - main - INFO - MongoDB connected successfully
+2025-06-14 02:18:48,376 - main - INFO - Loading model from: D:\Project-repo\cdd-prediction\chicken_disease_model.tflite
+2025-06-14 02:18:48,376 - main - INFO - Loading label map from: D:\Project-repo\cdd-prediction\label_map.json
+2025-06-14 02:18:48,385 - main - INFO - Model loaded successfully
+2025-06-14 02:18:48,386 - main - INFO - Label map loaded: {0: 'Cocci', 1: 'Healthy', 2: 'Newcastle', 3: 'NonFecal', 4: 'Salmo'}
+2025-06-14 02:23:42,924 - main - INFO - MongoDB connected successfully
+2025-06-14 02:23:42,924 - main - INFO - Loading model from: D:\Project-repo\cdd-prediction\chicken_disease_model.tflite
+2025-06-14 02:23:42,925 - main - INFO - Loading label map from: D:\Project-repo\cdd-prediction\label_map.json
+2025-06-14 02:23:42,935 - main - INFO - Model loaded successfully
+2025-06-14 02:23:42,935 - main - INFO - Label map loaded: {0: 'Cocci', 1: 'Healthy', 2: 'Newcastle', 3: 'NonFecal', 4: 'Salmo'}
+2025-06-14 02:24:29,168 - main - INFO - MongoDB connected successfully
+2025-06-14 02:24:29,168 - main - INFO - Loading model from: D:\Project-repo\cdd-prediction\chicken_disease_model.tflite
+2025-06-14 02:24:29,168 - main - INFO - Loading label map from: D:\Project-repo\cdd-prediction\label_map.json
+2025-06-14 02:24:29,178 - main - INFO - Model loaded successfully
+2025-06-14 02:24:29,179 - main - INFO - Label map loaded: {0: 'Cocci', 1: 'Healthy', 2: 'Newcastle', 3: 'NonFecal', 4: 'Salmo'}
+2025-06-14 02:38:37,204 - main - INFO - MongoDB connected successfully
+2025-06-14 02:38:37,204 - main - INFO - MongoDB connected successfully
+2025-06-14 02:38:37,205 - main - INFO - Loading model from: D:\Project-repo\cdd-prediction\chicken_disease_model.tflite
+2025-06-14 02:38:37,205 - main - INFO - Loading label map from: D:\Project-repo\cdd-prediction\label_map.json
+2025-06-14 02:38:37,205 - main - INFO - Loading model from: D:\Project-repo\cdd-prediction\chicken_disease_model.tflite
+2025-06-14 02:38:37,205 - main - INFO - Loading label map from: D:\Project-repo\cdd-prediction\label_map.json
+2025-06-14 02:38:37,215 - main - INFO - Model loaded successfully
+2025-06-14 02:38:37,215 - main - INFO - Model loaded successfully
+2025-06-14 02:38:37,215 - main - INFO - Label map loaded: {0: 'Cocci', 1: 'Healthy', 2: 'Newcastle', 3: 'NonFecal', 4: 'Salmo'}
+2025-06-14 02:38:37,215 - main - INFO - Label map loaded: {0: 'Cocci', 1: 'Healthy', 2: 'Newcastle', 3: 'NonFecal', 4: 'Salmo'}

@@ -2,21 +2,23 @@
 import os, uuid, json, traceback
 from datetime import datetime
 from typing import Optional, Tuple, Dict
-from fastapi import FastAPI, File, UploadFile, Form, Request, HTTPException, Depends
+from fastapi import FastAPI, File, UploadFile, Form, Request, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import APIKeyHeader
-from supabase import create_client, Client
 from PIL import Image
 import numpy as np
 import tensorflow as tf
 import logging
 from logging.handlers import RotatingFileHandler
+from pymongo import MongoClient
 import time
 from config import *
 from starlette.middleware.base import BaseHTTPMiddleware
 from collections import defaultdict
+
+import pytz
+from geopy.geocoders import Nominatim
 
 # --- Setup Logging ---
 logging.basicConfig(
@@ -29,18 +31,23 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# --- Configuration ---
-SUPABASE_URL = os.getenv("SUPABASE_URL", "https://nkgpheijeocinaulhgfr.supabase.co")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5rZ3BoZWlqZW9jaW5hdWxoZ2ZyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgzNDMwNjEsImV4cCI6MjA2MzkxOTA2MX0.MmKsCmkkYtRgO9cx-E3_zMqc0Vs1OClPl3QVosK5z0I")
-APP_BASE_URL = os.getenv("APP_BASE_URL", "http://192.168.2.7:8080")
+# --- Setup geolocator for reverse geocoding ---
+geolocator = Nominatim(user_agent="chicken_disease_app")
 
-# Initialize Supabase client
+# --- MongoDB Configuration ---
+MONGO_URI = os.getenv("MONGO_URI", "mongodb+srv://barrojohnnems01:cddapiendpoint@cdd.gg9azyr.mongodb.net/?retryWrites=true&w=majority&appName=CDD")
+MONGO_DB = os.getenv("MONGO_DB", "chicken_app")
+MONGO_COLLECTION = os.getenv("MONGO_COLLECTION", "scan_results")
+
 try:
-    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-    logger.info("Supabase client initialized successfully")
+    mongo_client = MongoClient(MONGO_URI)
+    mongo_db = mongo_client[MONGO_DB]
+    mongo_collection = mongo_db[MONGO_COLLECTION]
+    logger.info("MongoDB connected successfully")
 except Exception as e:
-    logger.error(f"Error initializing Supabase client: {str(e)}")
-    supabase = None
+    logger.error(f"MongoDB connection error: {str(e)}")
+    mongo_client = None
+    mongo_collection = None
 
 # --- FastAPI Setup ---
 app = FastAPI(
@@ -59,14 +66,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# --- API Key Security ---
-api_key_header = APIKeyHeader(name=API_KEY_HEADER)
-
-async def verify_api_key(api_key: str = Depends(api_key_header)):
-    if not api_key:
-        raise HTTPException(status_code=401, detail="API key is missing")
-    return api_key
 
 # --- Rate Limiting Middleware ---
 class RateLimitMiddleware(BaseHTTPMiddleware):
@@ -95,7 +94,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 app.add_middleware(RateLimitMiddleware)
 
 # --- Load Model and Label Map ---
-MODEL_PATH = os.path.join(os.path.dirname(__file__), "chicken_disease_efficientnetb4_model.tflite")
+MODEL_PATH = os.path.join(os.path.dirname(__file__), "chicken_disease_model.tflite")
 LABEL_MAP_PATH = os.path.join(os.path.dirname(__file__), "label_map.json")
 
 try:
@@ -111,24 +110,16 @@ try:
         label_map = {int(k): v for k, v in json.load(f).items()}
 
     logger.info("Model loaded successfully")
-    logger.info(f"Input details: {input_details}")
-    logger.info(f"Output details: {output_details}")
     logger.info(f"Label map loaded: {label_map}")
 except Exception as e:
     logger.error(f"Error loading model or label map: {str(e)}")
-    logger.error(f"Traceback: {traceback.format_exc()}")
     raise
 
 # --- Health Check Endpoint ---
 @app.get("/test")
 async def test():
     try:
-        if supabase:
-            test_query = supabase.table("scan_results").select("*").limit(1).execute()
-            db_status = "connected" if not test_query.error else "error"
-        else:
-            db_status = "not initialized"
-
+        db_status = "connected" if mongo_collection else "not initialized"
         return {
             "status": "ok",
             "message": "Server is running",
@@ -141,20 +132,44 @@ async def test():
         logger.error(f"Health check failed: {str(e)}")
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
-# --- Prediction Logic diri---
+# --- Prediction Logic ---
 def run_prediction(image_path: str) -> Tuple[str, float, str, Dict[str, float]]:
     try:
         image = Image.open(image_path).convert("RGB")
-        target_size = (input_details[0]['shape'][2], input_details[0]['shape'][1])
+        
+        # Inspect input shape
+        input_shape = input_details[0]['shape']  # e.g. [1, 380, 380, 3]
+        logger.debug(f"Model input shape: {input_shape}")
+        
+        target_size = (input_shape[2], input_shape[1])  # (width, height)
         image = image.resize(target_size)
+        logger.debug(f"Resized image to: {target_size}")
 
+        # Convert to float32 and scale
         input_array = np.array(image, dtype=np.float32) / 255.0
-        input_array = np.expand_dims(input_array, axis=0)
+        logger.debug(f"Input array shape before normalization: {input_array.shape}, dtype: {input_array.dtype}")
+        
+        # Normalize using EfficientNetB4 mean/std
+        mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
+        std = np.array([0.229, 0.224, 0.225], dtype=np.float32)
+        
+        # Broadcast mean/std subtraction/division
+        input_array = (input_array - mean) / std
+        logger.debug(f"Input array after normalization (sample values): {input_array[0,0,:]}")
 
+        # Add batch dimension
+        input_array = np.expand_dims(input_array, axis=0)
+        logger.debug(f"Input array shape after expand_dims: {input_array.shape}")
+
+        # Set tensor and run inference
         interpreter.set_tensor(input_details[0]['index'], input_array)
         interpreter.invoke()
-        output_data = interpreter.get_tensor(output_details[0]['index'])[0]
 
+        # Get output
+        output_data = interpreter.get_tensor(output_details[0]['index'])[0]
+        logger.debug(f"Raw output data: {output_data}")
+
+        # Map class indices to labels and confidence
         class_probs = {label_map[i]: float(conf) for i, conf in enumerate(output_data)}
         sorted_probs = dict(sorted(class_probs.items(), key=lambda x: x[1], reverse=True))
 
@@ -166,18 +181,20 @@ def run_prediction(image_path: str) -> Tuple[str, float, str, Dict[str, float]]:
             "Low"
         )
 
+        logger.info(f"Prediction: {top_class} with confidence: {confidence:.4f}")
         return top_class, confidence, risk_level, sorted_probs
+
     except Exception as e:
-        logger.error(f"Prediction error: {str(e)}")
+        logger.error(f"Prediction error: {str(e)}", exc_info=True)
         raise RuntimeError(f"Prediction failed: {str(e)}")
 
-# --- Predict Endpoint to save unta sa db for production ---
+
 @app.post("/predict")
 async def predict(
     request: Request,
     file: UploadFile = File(...),
     latitude: Optional[str] = Form(None),
-    longitude: Optional[str] = Form(None)
+    longitude: Optional[str] = Form(None),
 ):
     try:
         if not file.filename.lower().endswith(tuple(ALLOWED_EXTENSIONS)):
@@ -198,44 +215,49 @@ async def predict(
         prediction, confidence, severity, probabilities = run_prediction(upload_path)
 
         image_url = f"{API_BASE_URL}/static/uploads/{filename}"
+
+        # --- Reverse geocoding ---
+        location_name = "Unknown Location"
+        try:
+            if latitude and longitude:
+                location = geolocator.reverse(f"{latitude}, {longitude}", language='en')
+                if location and location.address:
+                    location_name = location.address
+        except Exception as geo_err:
+            logger.warning(f"Reverse geocoding failed: {str(geo_err)}")
+
+        # --- Get current time with timezone Asia/Manila ---
+        tz = pytz.timezone("Asia/Manila")
+        scanned_at = datetime.now(tz).isoformat()
+
         scan_data = {
             "result": prediction,
             "confidence": round(confidence, 3),
             "severity": severity,
-            "probabilities": json.dumps(probabilities),
+            "probabilities": probabilities,
             "image_url": image_url,
-            "location_name": "Your Farm",
+            "location_name": location_name,
             "lat": latitude,
             "lon": longitude,
-            "scanned_at": datetime.utcnow().isoformat(),
+            "scanned_at": scanned_at,
         }
 
         db_id = None
-        if supabase:
+        if mongo_collection:
             try:
-                logger.info(f"Inserting scan data: {json.dumps(scan_data, indent=2)}")
-                sb_res = supabase.table("scan_results").insert([scan_data]).execute()
-
-                if hasattr(sb_res, 'error') and sb_res.error:
-                    logger.error(f"Supabase error: {sb_res.error}")
-                    raise HTTPException(status_code=500, detail=f"Database error: {sb_res.error}")
-
-                if sb_res.data:
-                    db_id = sb_res.data[0]["id"]
-                    logger.info(f"Saved to database with ID: {db_id}")
-                else:
-                    logger.warning("No data returned from Supabase insert")
+                result = mongo_collection.insert_one(scan_data)
+                db_id = str(result.inserted_id)
+                logger.info(f"Saved to MongoDB with ID: {db_id}")
             except Exception as db_error:
-                logger.error(f"Supabase insert failed: {str(db_error)}")
+                logger.error(f"MongoDB insert failed: {str(db_error)}")
                 logger.error(f"Traceback: {traceback.format_exc()}")
         else:
-            logger.warning("Skipping database save - Supabase not initialized")
+            logger.warning("Skipping database save - MongoDB not initialized")
 
         response_data = {
             **scan_data,
             "id": db_id,
             "saved_to_db": db_id is not None,
-            "probabilities": probabilities
         }
 
         return JSONResponse(response_data)
@@ -250,5 +272,5 @@ async def predict(
         logger.error(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
 
-# --- Static Files to save prediction locally --- gamit AsyncStorage
+# --- Static Files for Uploaded Images ---
 app.mount("/static", StaticFiles(directory="static"), name="static")
