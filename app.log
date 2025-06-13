@@ -53,3 +53,13 @@ ValueError: Could not open 'D:\Project-repo\cdd-prediction\chicken_disease_model
 2025-06-14 02:38:37,215 - main - INFO - Model loaded successfully
 2025-06-14 02:38:37,215 - main - INFO - Label map loaded: {0: 'Cocci', 1: 'Healthy', 2: 'Newcastle', 3: 'NonFecal', 4: 'Salmo'}
 2025-06-14 02:38:37,215 - main - INFO - Label map loaded: {0: 'Cocci', 1: 'Healthy', 2: 'Newcastle', 3: 'NonFecal', 4: 'Salmo'}
+2025-06-14 02:40:20,259 - main - INFO - MongoDB connected successfully
+2025-06-14 02:40:20,260 - main - INFO - Loading model from: D:\Project-repo\cdd-prediction\chicken_disease_efficientnetb4_model.tflite
+2025-06-14 02:40:20,260 - main - INFO - Loading label map from: D:\Project-repo\cdd-prediction\label_map.json
+2025-06-14 02:40:20,271 - main - INFO - Model loaded successfully
+2025-06-14 02:40:20,271 - main - INFO - Label map loaded: {0: 'Cocci', 1: 'Healthy', 2: 'Newcastle', 3: 'NonFecal', 4: 'Salmo'}
+2025-06-14 02:40:20,292 - main - INFO - MongoDB connected successfully
+2025-06-14 02:40:20,292 - main - INFO - Loading model from: D:\Project-repo\cdd-prediction\chicken_disease_efficientnetb4_model.tflite
+2025-06-14 02:40:20,292 - main - INFO - Loading label map from: D:\Project-repo\cdd-prediction\label_map.json
+2025-06-14 02:40:20,302 - main - INFO - Model loaded successfully
+2025-06-14 02:40:20,302 - main - INFO - Label map loaded: {0: 'Cocci', 1: 'Healthy', 2: 'Newcastle', 3: 'NonFecal', 4: 'Salmo'}

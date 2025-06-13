@@ -8,7 +8,11 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 import numpy as np
-import tensorflow as tf
+from tflite_runtime.interpreter import Interpreter
+from tflite_runtime.interpreter import Interpreter  # type: ignore
+
+import platform
+
 import logging
 from logging.handlers import RotatingFileHandler
 from pymongo import MongoClient
@@ -19,6 +23,15 @@ from collections import defaultdict
 
 import pytz
 from geopy.geocoders import Nominatim
+
+try:
+    if platform.system() == "Windows":
+        import tensorflow as tf
+        Interpreter = tf.lite.Interpreter
+    else:
+        from tflite_runtime.interpreter import Interpreter
+except ImportError as e:
+    raise ImportError("Neither tflite_runtime nor tensorflow is available.") from e
 
 # --- Setup Logging ---
 logging.basicConfig(
@@ -101,7 +114,7 @@ try:
     logger.info(f"Loading model from: {MODEL_PATH}")
     logger.info(f"Loading label map from: {LABEL_MAP_PATH}")
 
-    interpreter = tf.lite.Interpreter(model_path=MODEL_PATH)
+    interpreter = Interpreter(model_path=MODEL_PATH)
     interpreter.allocate_tensors()
     input_details = interpreter.get_input_details()
     output_details = interpreter.get_output_details()
