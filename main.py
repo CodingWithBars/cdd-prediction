@@ -228,6 +228,8 @@ async def predict(
         else:
             logger.warning("Skipping database save - MongoDB not initialized")
 
+        scan_data.pop('_id', None)
+        
         response_data = {
             **scan_data,
             "id": db_id,
