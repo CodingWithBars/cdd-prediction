@@ -256,7 +256,7 @@ async def predict(
         }
 
         db_id = None
-        if mongo_collection:
+        if mongo_collection is not None:
             try:
                 result = mongo_collection.insert_one(scan_data)
                 db_id = str(result.inserted_id)
