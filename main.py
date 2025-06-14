@@ -18,6 +18,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from collections import defaultdict
 import pytz
 from geopy.geocoders import Nominatim
+from fastapi.encoders import jsonable_encoder
 
 try:
     if platform.system() == "Windows":
@@ -229,7 +230,7 @@ async def predict(
             logger.warning("Skipping database save - MongoDB not initialized")
 
         scan_data.pop('_id', None)
-        
+
         response_data = {
             **scan_data,
             "id": db_id,
@@ -247,6 +248,27 @@ async def predict(
         logger.error(f"Unhandled error: {str(e)}")
         logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
+    
+@app.get("/scans")
+async def get_recent_scans(limit: int = 20):
+    try:
+        if mongo_collection is None:
+            raise HTTPException(status_code=500, detail="MongoDB not initialized")
+
+        # Get most recent scans
+        results = mongo_collection.find().sort("scanned_at", -1).limit(limit)
+
+        # Convert ObjectId to string and ensure JSON serializable
+        scans = []
+        for doc in results:
+            doc["_id"] = str(doc["_id"])
+            scans.append(jsonable_encoder(doc))
+
+        return scans
+
+    except Exception as e:
+        logger.error(f"Failed to fetch recent scans: {str(e)}")
+        raise HTTPException(status_code=500, detail="Could not fetch scan history")
 
 # --- Serve uploaded images ---
 app.mount("/static", StaticFiles(directory="static"), name="static")
