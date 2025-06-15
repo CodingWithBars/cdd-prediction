@@ -252,44 +252,25 @@ async def predict(
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
     
 @app.get("/scans")
-async def get_recent_scans(
-    limit: int = Query(10, ge=1, le=100),
-    skip: int = Query(0, ge=0),
-    disease: Optional[str] = None
-):
+async def get_recent_scans(limit: int = 100):
     try:
         if mongo_collection is None:
             raise HTTPException(status_code=500, detail="MongoDB not initialized")
 
-        query = {}
-        if disease:
-            query["result"] = disease  # filter by disease name
+        # Get most recent scans
+        results = mongo_collection.find().sort("scanned_at", -1).limit(limit)
 
-        # Fetch results with optional pagination and filtering
-        results = (
-            mongo_collection.find(query)
-            .sort("scanned_at", -1)
-            .skip(skip)
-            .limit(limit)
-        )
-
+        # Convert ObjectId to string and ensure JSON serializable
         scans = []
         for doc in results:
             doc["_id"] = str(doc["_id"])
             scans.append(jsonable_encoder(doc))
 
-        return {
-            "scans": scans,
-            "pagination": {
-                "limit": limit,
-                "skip": skip,
-                "filter": disease if disease else "all"
-            }
-        }
+        return scans
 
     except Exception as e:
-        logger.error(f"Failed to fetch scans: {str(e)}")
+        logger.error(f"Failed to fetch recent scans: {str(e)}")
         raise HTTPException(status_code=500, detail="Could not fetch scan history")
-    
+
 # --- Serve uploaded images ---
 app.mount("/static", StaticFiles(directory="static"), name="static")
