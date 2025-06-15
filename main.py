@@ -49,6 +49,9 @@ geolocator = Nominatim(user_agent="chicken_disease_app")
 MONGO_URI = os.getenv("MONGO_URI", "mongodb+srv://barrojohnnems01:cddapiendpoint@cdd.gg9azyr.mongodb.net/?retryWrites=true&w=majority&appName=CDD")
 MONGO_DB = os.getenv("MONGO_DB", "chicken_app")
 MONGO_COLLECTION = os.getenv("MONGO_COLLECTION", "scan_results")
+UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "static", "uploads")
+
+logger.info(f"Image saved to: {upload_path}")
 
 try:
     mongo_client = MongoClient(MONGO_URI)
@@ -274,3 +277,4 @@ async def get_recent_scans(limit: int = 100):
 
 # --- Serve uploaded images ---
 app.mount("/static", StaticFiles(directory="static"), name="static")
+

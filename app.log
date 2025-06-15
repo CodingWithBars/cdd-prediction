@@ -73,3 +73,5 @@ ValueError: Could not open 'D:\Project-repo\cdd-prediction\chicken_disease_model
 2025-06-15 12:07:16,556 - main - INFO - Model and label map loaded successfully
 2025-06-15 12:16:05,181 - main - INFO - MongoDB connected successfully
 2025-06-15 12:16:05,192 - main - INFO - Model and label map loaded successfully
+2025-06-15 15:22:12,389 - main - INFO - MongoDB connected successfully
+2025-06-15 15:22:12,441 - main - INFO - Model and label map loaded successfully
