@@ -24,10 +24,7 @@ from typing import Optional
 
 # Ensure these are already defined
 from config import ALLOWED_EXTENSIONS, MAX_UPLOAD_SIZE, UPLOAD_DIR, API_BASE_URL
-from model import run_prediction  # Your TFLite inference function
-from logger import logger  # Your logging setup
 from geopy.geocoders import Nominatim
-from database import mongo_collection  # MongoDB collection or None
 
 try:
     if platform.system() == "Windows":
