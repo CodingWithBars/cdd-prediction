@@ -19,6 +19,8 @@ from collections import defaultdict
 import pytz
 from geopy.geocoders import Nominatim
 from fastapi.encoders import jsonable_encoder
+from fastapi import Query
+from typing import Optional
 
 try:
     if platform.system() == "Windows":
@@ -250,25 +252,44 @@ async def predict(
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
     
 @app.get("/scans")
-async def get_recent_scans(limit: int = 20):
+async def get_recent_scans(
+    limit: int = Query(10, ge=1, le=100),
+    skip: int = Query(0, ge=0),
+    disease: Optional[str] = None
+):
     try:
         if mongo_collection is None:
             raise HTTPException(status_code=500, detail="MongoDB not initialized")
 
-        # Get most recent scans
-        results = mongo_collection.find().sort("scanned_at", -1).limit(limit)
+        query = {}
+        if disease:
+            query["result"] = disease  # filter by disease name
 
-        # Convert ObjectId to string and ensure JSON serializable
+        # Fetch results with optional pagination and filtering
+        results = (
+            mongo_collection.find(query)
+            .sort("scanned_at", -1)
+            .skip(skip)
+            .limit(limit)
+        )
+
         scans = []
         for doc in results:
             doc["_id"] = str(doc["_id"])
             scans.append(jsonable_encoder(doc))
 
-        return scans
+        return {
+            "scans": scans,
+            "pagination": {
+                "limit": limit,
+                "skip": skip,
+                "filter": disease if disease else "all"
+            }
+        }
 
     except Exception as e:
-        logger.error(f"Failed to fetch recent scans: {str(e)}")
+        logger.error(f"Failed to fetch scans: {str(e)}")
         raise HTTPException(status_code=500, detail="Could not fetch scan history")
-
+    
 # --- Serve uploaded images ---
 app.mount("/static", StaticFiles(directory="static"), name="static")
