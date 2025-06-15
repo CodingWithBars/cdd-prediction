@@ -22,6 +22,13 @@ from fastapi.encoders import jsonable_encoder
 from fastapi import Query
 from typing import Optional
 
+# Ensure these are already defined
+from config import ALLOWED_EXTENSIONS, MAX_UPLOAD_SIZE, UPLOAD_DIR, API_BASE_URL
+from model import run_prediction  # Your TFLite inference function
+from logger import logger  # Your logging setup
+from geopy.geocoders import Nominatim
+from database import mongo_collection  # MongoDB collection or None
+
 try:
     if platform.system() == "Windows":
         import tensorflow as tf
@@ -50,8 +57,6 @@ MONGO_URI = os.getenv("MONGO_URI", "mongodb+srv://barrojohnnems01:cddapiendpoint
 MONGO_DB = os.getenv("MONGO_DB", "chicken_app")
 MONGO_COLLECTION = os.getenv("MONGO_COLLECTION", "scan_results")
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "static", "uploads")
-
-logger.info(f"Image saved to: {upload_path}")
 
 try:
     mongo_client = MongoClient(MONGO_URI)
