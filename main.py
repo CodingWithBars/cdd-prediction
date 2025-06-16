@@ -197,9 +197,25 @@ async def predict(
         with open(upload_path, "wb") as buffer:
             buffer.write(content)
 
+        # Run prediction
         prediction, confidence, severity, probabilities = run_prediction(upload_path)
         image_url = f"{API_BASE_URL}/static/uploads/{filename}"
 
+        # Reject low-confidence predictions
+        if confidence < 0.4:
+            logger.warning(f"Prediction below threshold: {confidence:.3f}")
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "message": "Prediction confidence is too low to provide a reliable result.",
+                    "confidence": round(confidence, 3),
+                    "probabilities": probabilities,
+                    "image_url": image_url,
+                    "valid": False
+                }
+            )
+
+        # Reverse geolocation
         location_name = "Unknown Location"
         try:
             if latitude and longitude:
@@ -209,9 +225,11 @@ async def predict(
         except Exception as geo_err:
             logger.warning(f"Reverse geocoding failed: {str(geo_err)}")
 
+        # Timestamp
         tz = pytz.timezone("Asia/Manila")
         scanned_at = datetime.now(tz).isoformat()
 
+        # Scan data
         scan_data = {
             "result": prediction,
             "confidence": round(confidence, 3),
@@ -224,6 +242,7 @@ async def predict(
             "scanned_at": scanned_at,
         }
 
+        # Save to MongoDB
         db_id = None
         if mongo_collection is not None:
             try:
@@ -238,10 +257,12 @@ async def predict(
 
         scan_data.pop('_id', None)
 
+        # Final response
         response_data = {
             **scan_data,
             "id": db_id,
             "saved_to_db": db_id is not None,
+            "valid": True,
         }
 
         return JSONResponse(response_data)
@@ -255,6 +276,7 @@ async def predict(
         logger.error(f"Unhandled error: {str(e)}")
         logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
+
     
 @app.get("/scans")
 async def get_recent_scans(limit: int = 100):
