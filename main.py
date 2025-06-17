@@ -110,7 +110,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 app.add_middleware(RateLimitMiddleware)
 
 # --- Load Model and Labels ---
-MODEL_PATH = os.path.join(os.path.dirname(__file__), "chicken_disease_efficientnetb4_model4.tflite")
+MODEL_PATH = os.path.join(os.path.dirname(__file__), "chicken_disease_efficientnetb4_model1.tflite")
 LABEL_MAP_PATH = os.path.join(os.path.dirname(__file__), "label_map.json")
 
 try:
@@ -202,7 +202,7 @@ async def predict(
         image_url = f"{API_BASE_URL}/static/uploads/{filename}"
 
         # Reject low-confidence predictions
-        if confidence < 0.3:
+        if confidence < 0.4:
             logger.warning(f"Prediction below threshold: {confidence:.3f}")
             return JSONResponse(
                 status_code=200,
@@ -214,6 +214,7 @@ async def predict(
                     "valid": False
                 }
             )
+        
 
         # Reverse geolocation
         location_name = "Unknown Location"
