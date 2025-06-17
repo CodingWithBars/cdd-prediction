@@ -201,20 +201,31 @@ async def predict(
         prediction, confidence, severity, probabilities = run_prediction(upload_path)
         image_url = f"{API_BASE_URL}/static/uploads/{filename}"
 
-        # Reject low-confidence predictions
-        if confidence < 0.4:
-            logger.warning(f"Prediction below threshold: {confidence:.3f}")
+        # Top-N predictions
+        sorted_probs = sorted(probabilities.items(), key=lambda x: x[1], reverse=True)
+        top_classes = [
+            {"class": label, "probability": round(prob, 3)}
+            for label, prob in sorted_probs[:3]
+        ]
+
+        # Dynamic rejection logic
+        top1 = sorted_probs[0][1]
+        top2 = sorted_probs[1][1] if len(sorted_probs) > 1 else 0.0
+        margin = top1 - top2
+
+        if top1 < 0.5 or margin < 0.15:
+            logger.warning(f"Low confidence or ambiguous prediction: top1={top1:.3f}, margin={margin:.3f}")
             return JSONResponse(
                 status_code=200,
                 content={
-                    "message": "Prediction confidence is too low to provide a reliable result.",
-                    "confidence": round(confidence, 3),
+                    "message": "Prediction is ambiguous or low confidence. Please rescan.",
+                    "confidence": round(top1, 3),
+                    "top_classes": top_classes,
                     "probabilities": probabilities,
                     "image_url": image_url,
                     "valid": False
                 }
             )
-        
 
         # Reverse geolocation
         location_name = "Unknown Location"
@@ -236,6 +247,7 @@ async def predict(
             "confidence": round(confidence, 3),
             "severity": severity,
             "probabilities": probabilities,
+            "top_classes": top_classes,
             "image_url": image_url,
             "location_name": location_name,
             "lat": latitude,
@@ -255,8 +267,6 @@ async def predict(
                 logger.error(traceback.format_exc())
         else:
             logger.warning("Skipping database save - MongoDB not initialized")
-
-        scan_data.pop('_id', None)
 
         # Final response
         response_data = {
