@@ -202,7 +202,7 @@ async def predict(
         image_url = f"{API_BASE_URL}/static/uploads/{filename}"
 
         # Reject low-confidence predictions
-        if confidence < 0.4:
+        if confidence < 0.3:
             logger.warning(f"Prediction below threshold: {confidence:.3f}")
             return JSONResponse(
                 status_code=200,
