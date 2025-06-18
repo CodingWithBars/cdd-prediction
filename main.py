@@ -21,6 +21,8 @@ from geopy.geocoders import Nominatim
 from fastapi.encoders import jsonable_encoder
 from fastapi import Query
 from typing import Optional
+import tensorflow as tf
+Interpreter = tf.lite.Interpreter
 
 # Ensure these are already defined
 from config import ALLOWED_EXTENSIONS, MAX_UPLOAD_SIZE, UPLOAD_DIR, API_BASE_URL
