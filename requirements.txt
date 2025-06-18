@@ -7,3 +7,4 @@ pymongo
 geopy
 python-multipart
 pytz
+tflite-runtime
