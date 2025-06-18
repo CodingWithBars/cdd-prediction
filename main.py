@@ -8,7 +8,6 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 import numpy as np
-import platform
 import logging
 from logging.handlers import RotatingFileHandler
 from pymongo import MongoClient
@@ -21,20 +20,20 @@ from geopy.geocoders import Nominatim
 from fastapi.encoders import jsonable_encoder
 from fastapi import Query
 from typing import Optional
+import platform
 
 # Ensure these are already defined
 from config import ALLOWED_EXTENSIONS, MAX_UPLOAD_SIZE, UPLOAD_DIR, API_BASE_URL
 from geopy.geocoders import Nominatim
 
 try:
-    if platform.system() == "Windows":
-        import tensorflow as tf
-        Interpreter = tf.lite.Interpreter
-    else:
+    import tensorflow as tf
+    Interpreter = tf.lite.Interpreter
+except ImportError:
+    try:
         from tflite_runtime.interpreter import Interpreter
-except ImportError as e:
-    raise ImportError("Neither tflite_runtime nor tensorflow is available.") from e
-
+    except ImportError:
+        raise ImportError("Neither tensorflow nor tflite_runtime is available.")
 # --- Setup Logging ---
 logging.basicConfig(
     level=getattr(logging, LOG_LEVEL),
