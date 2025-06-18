@@ -109,7 +109,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 app.add_middleware(RateLimitMiddleware)
 
 # --- Load Model and Labels ---
-MODEL_PATH = os.path.join(os.path.dirname(__file__), "new-model-aug.tflite")
+MODEL_PATH = os.path.join(os.path.dirname(__file__), "Mb2_final_best_model.tflite")
 LABEL_MAP_PATH = os.path.join(os.path.dirname(__file__), "labels.json")
 
 try:
