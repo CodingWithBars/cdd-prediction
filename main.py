@@ -1,5 +1,5 @@
 # --- Imports ---
-import os, uuid, json, traceback
+import os, uuid, json, traceback, io
 from datetime import datetime
 from typing import Optional, Tuple, Dict
 from fastapi import FastAPI, File, UploadFile, Form, Request, HTTPException
@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 import numpy as np
-import platform
+import tensorflow as tf
 import logging
 from logging.handlers import RotatingFileHandler
 from pymongo import MongoClient
@@ -19,21 +19,6 @@ from collections import defaultdict
 import pytz
 from geopy.geocoders import Nominatim
 from fastapi.encoders import jsonable_encoder
-from fastapi import Query
-from typing import Optional
-
-# Ensure these are already defined
-from config import ALLOWED_EXTENSIONS, MAX_UPLOAD_SIZE, UPLOAD_DIR, API_BASE_URL
-from geopy.geocoders import Nominatim
-
-try:
-    if platform.system() == "Windows":
-        import tensorflow as tf
-        Interpreter = tf.lite.Interpreter
-    else:
-        from tflite_runtime.interpreter import Interpreter
-except ImportError as e:
-    raise ImportError("Neither tflite_runtime nor tensorflow is available.") from e
 
 # --- Setup Logging ---
 logging.basicConfig(
@@ -66,13 +51,7 @@ except Exception as e:
     mongo_collection = None
 
 # --- FastAPI Setup ---
-app = FastAPI(
-    title="Chicken Disease Detection API",
-    description="API for detecting chicken diseases from images",
-    version="1.0.0",
-    docs_url="/docs" if DEBUG else None,
-    redoc_url="/redoc" if DEBUG else None
-)
+app = FastAPI(title="Chicken Disease Detection API", version="1.0.0")
 
 # --- CORS ---
 app.add_middleware(
@@ -92,72 +71,51 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         client_ip = request.client.host
         current_time = time.time()
-
         self.requests[client_ip] = [
-            req_time for req_time in self.requests[client_ip]
-            if current_time - req_time < RATE_LIMIT_WINDOW
+            t for t in self.requests[client_ip] if current_time - t < RATE_LIMIT_WINDOW
         ]
-
         if len(self.requests[client_ip]) >= RATE_LIMIT_REQUESTS:
-            return JSONResponse(
-                status_code=429,
-                content={"error": "Rate limit exceeded"}
-            )
-
+            return JSONResponse(status_code=429, content={"error": "Rate limit exceeded"})
         self.requests[client_ip].append(current_time)
         return await call_next(request)
 
 app.add_middleware(RateLimitMiddleware)
 
-# --- Load Model and Labels ---
-MODEL_PATH = os.path.join(os.path.dirname(__file__), "chicken_disease_efficientnetb4_model.tflite")
-LABEL_MAP_PATH = os.path.join(os.path.dirname(__file__), "label_map.json")
+# --- Load TFLite Model ---
+MODEL_PATH = os.path.join(os.path.dirname(__file__), "new-model-aug.tflite")
 
 try:
-    interpreter = Interpreter(model_path=MODEL_PATH)
+    interpreter = tf.lite.Interpreter(model_path=MODEL_PATH)
     interpreter.allocate_tensors()
     input_details = interpreter.get_input_details()
     output_details = interpreter.get_output_details()
-
-    with open(LABEL_MAP_PATH, "r") as f:
-        label_map = {int(k): v for k, v in json.load(f).items()}
-
-    logger.info("Model and label map loaded successfully")
+    logger.info("TFLite model loaded successfully")
 except Exception as e:
-    logger.error(f"Failed to load model or labels: {str(e)}")
+    logger.error(f"Model loading failed: {str(e)}")
     raise
 
-# --- Health Check ---
-@app.get("/test")
-async def test():
+# --- Class Labels ---
+label_map = {
+    0: "Coccidiosis",
+    1: "Newcastle Disease",
+    2: "Healthy",
+    3: "NonFecal",
+    4: "Unknown"
+}
+
+# --- Preprocessing for ResNet50 ---
+def preprocess_image(image_bytes):
+    img = Image.open(io.BytesIO(image_bytes)).convert('RGB')
+    img = img.resize((224, 224))
+    img_array = np.array(img).astype(np.float32)
+    img_array = tf.keras.applications.resnet50.preprocess_input(img_array)
+    img_array = np.expand_dims(img_array, axis=0)
+    return img_array
+
+# --- Prediction ---
+def run_prediction(image_bytes: bytes) -> Tuple[str, float, str, Dict[str, float]]:
     try:
-        db_status = "connected" if mongo_collection else "not initialized"
-        return {
-            "status": "ok",
-            "message": "Server is running",
-            "model_loaded": True,
-            "label_map": label_map,
-            "database_status": db_status,
-            "version": "1.0.0"
-        }
-    except Exception as e:
-        logger.error(f"Health check failed: {str(e)}")
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
-
-# --- Prediction Core ---
-def run_prediction(image_path: str) -> Tuple[str, float, str, Dict[str, float]]:
-    try:
-        image = Image.open(image_path).convert("RGB")
-        input_shape = input_details[0]['shape']
-        target_size = (input_shape[2], input_shape[1])
-        image = image.resize(target_size)
-
-        input_array = np.array(image, dtype=np.float32) / 255.0
-        mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
-        std = np.array([0.229, 0.224, 0.225], dtype=np.float32)
-        input_array = (input_array - mean) / std
-        input_array = np.expand_dims(input_array, axis=0)
-
+        input_array = preprocess_image(image_bytes)
         interpreter.set_tensor(input_details[0]['index'], input_array)
         interpreter.invoke()
         output_data = interpreter.get_tensor(output_details[0]['index'])[0]
@@ -197,7 +155,7 @@ async def predict(
         with open(upload_path, "wb") as buffer:
             buffer.write(content)
 
-        prediction, confidence, severity, probabilities = run_prediction(upload_path)
+        prediction, confidence, severity, probabilities = run_prediction(content)
         image_url = f"{API_BASE_URL}/static/uploads/{filename}"
 
         location_name = "Unknown Location"
@@ -225,7 +183,7 @@ async def predict(
         }
 
         db_id = None
-        if mongo_collection is not None:
+        if mongo_collection:
             try:
                 result = mongo_collection.insert_one(scan_data)
                 db_id = str(result.inserted_id)
@@ -233,18 +191,9 @@ async def predict(
             except Exception as db_error:
                 logger.error(f"MongoDB insert failed: {str(db_error)}")
                 logger.error(traceback.format_exc())
-        else:
-            logger.warning("Skipping database save - MongoDB not initialized")
 
         scan_data.pop('_id', None)
-
-        response_data = {
-            **scan_data,
-            "id": db_id,
-            "saved_to_db": db_id is not None,
-        }
-
-        return JSONResponse(response_data)
+        return JSONResponse({**scan_data, "id": db_id, "saved_to_db": db_id is not None})
 
     except HTTPException as he:
         raise he
@@ -255,28 +204,22 @@ async def predict(
         logger.error(f"Unhandled error: {str(e)}")
         logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
-    
+
+# --- Recent Scan Retrieval ---
 @app.get("/scans")
 async def get_recent_scans(limit: int = 100):
     try:
         if mongo_collection is None:
             raise HTTPException(status_code=500, detail="MongoDB not initialized")
-
-        # Get most recent scans
         results = mongo_collection.find().sort("scanned_at", -1).limit(limit)
-
-        # Convert ObjectId to string and ensure JSON serializable
         scans = []
         for doc in results:
             doc["_id"] = str(doc["_id"])
             scans.append(jsonable_encoder(doc))
-
         return scans
-
     except Exception as e:
         logger.error(f"Failed to fetch recent scans: {str(e)}")
         raise HTTPException(status_code=500, detail="Could not fetch scan history")
 
-# --- Serve uploaded images ---
+# --- Serve Uploaded Files ---
 app.mount("/static", StaticFiles(directory="static"), name="static")
-
