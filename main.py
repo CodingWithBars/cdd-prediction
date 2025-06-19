@@ -174,12 +174,15 @@ def run_prediction(image_path: str) -> Tuple[str, float, str, Dict[str, float]]:
         raise RuntimeError(f"Prediction failed: {str(e)}")
 
 # --- Prediction Endpoint ---
+from fastapi import Form
+
 @app.post("/predict")
 async def predict(
     request: Request,
     file: UploadFile = File(...),
     latitude: Optional[str] = Form(None),
     longitude: Optional[str] = Form(None),
+    user_name: Optional[str] = Form("Anonymous"),  # 👈 Accept user_name from frontend
 ):
     try:
         if not file.filename.lower().endswith(tuple(ALLOWED_EXTENSIONS)):
@@ -212,6 +215,7 @@ async def predict(
         scanned_at = datetime.now(tz).isoformat()
 
         scan_data = {
+            "user_name": user_name,  # 👈 Include user_name in the saved data
             "result": prediction,
             "confidence": round(confidence, 3),
             "severity": severity,
