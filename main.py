@@ -1,8 +1,5 @@
 # --- Imports ---
-import os
-import uuid
-import json
-import traceback
+import os, uuid, json, traceback
 from datetime import datetime
 from typing import Optional, Tuple, Dict
 from fastapi import FastAPI, File, UploadFile, Form, Request, HTTPException
@@ -14,7 +11,6 @@ import numpy as np
 import logging
 from logging.handlers import RotatingFileHandler
 from pymongo import MongoClient
-from bson import ObjectId
 import time
 from config import *
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -22,6 +18,13 @@ from collections import defaultdict
 import pytz
 from geopy.geocoders import Nominatim
 from fastapi.encoders import jsonable_encoder
+from fastapi import Query
+from typing import Optional
+import platform
+
+# Ensure these are already defined
+from config import ALLOWED_EXTENSIONS, MAX_UPLOAD_SIZE, UPLOAD_DIR, API_BASE_URL
+from geopy.geocoders import Nominatim
 
 try:
     import tensorflow as tf
@@ -31,7 +34,6 @@ except ImportError:
         from tflite_runtime.interpreter import Interpreter
     except ImportError:
         raise ImportError("Neither tensorflow nor tflite_runtime is available.")
-
 # --- Setup Logging ---
 logging.basicConfig(
     level=getattr(logging, LOG_LEVEL),
@@ -47,24 +49,20 @@ logger = logging.getLogger(__name__)
 geolocator = Nominatim(user_agent="chicken_disease_app")
 
 # --- MongoDB Configuration ---
-MONGO_URI = os.getenv("MONGO_URI", "your_mongo_uri_here")
+MONGO_URI = os.getenv("MONGO_URI", "mongodb+srv://barrojohnnems01:cddapiendpoint@cdd.gg9azyr.mongodb.net/?retryWrites=true&w=majority&appName=CDD")
 MONGO_DB = os.getenv("MONGO_DB", "chicken_app")
-SCAN_COLLECTION = os.getenv("MONGO_COLLECTION", "scan_results")
-USER_COLLECTION = os.getenv("MONGO_USER_COLLECTION", "users")  # add this in your env
-
+MONGO_COLLECTION = os.getenv("MONGO_COLLECTION", "scan_results")
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "static", "uploads")
 
 try:
     mongo_client = MongoClient(MONGO_URI)
     mongo_db = mongo_client[MONGO_DB]
-    scan_collection = mongo_db[SCAN_COLLECTION]
-    user_collection = mongo_db[USER_COLLECTION]
+    mongo_collection = mongo_db[MONGO_COLLECTION]
     logger.info("MongoDB connected successfully")
 except Exception as e:
     logger.error(f"MongoDB connection error: {str(e)}")
     mongo_client = None
-    scan_collection = None
-    user_collection = None
+    mongo_collection = None
 
 # --- FastAPI Setup ---
 app = FastAPI(
@@ -132,7 +130,7 @@ except Exception as e:
 @app.get("/test")
 async def test():
     try:
-        db_status = "connected" if scan_collection else "not initialized"
+        db_status = "connected" if mongo_collection else "not initialized"
         return {
             "status": "ok",
             "message": "Server is running",
@@ -182,7 +180,6 @@ async def predict(
     file: UploadFile = File(...),
     latitude: Optional[str] = Form(None),
     longitude: Optional[str] = Form(None),
-    user_id: Optional[str] = Form(None),  # <-- now user_id expected as string
 ):
     try:
         if not file.filename.lower().endswith(tuple(ALLOWED_EXTENSIONS)):
@@ -199,7 +196,7 @@ async def predict(
         with open(upload_path, "wb") as buffer:
             buffer.write(content)
 
-        prediction, confidence, severity, probabilities = run_prediction(upload_path)
+        name, prediction, confidence, severity, probabilities = run_prediction(upload_path)
         image_url = f"{API_BASE_URL}/static/uploads/{filename}"
 
         location_name = "Unknown Location"
@@ -214,17 +211,8 @@ async def predict(
         tz = pytz.timezone("Asia/Manila")
         scanned_at = datetime.now(tz).isoformat()
 
-        # Convert user_id string to ObjectId if present
-        user_obj_id = None
-        if user_id:
-            try:
-                user_obj_id = ObjectId(user_id)
-            except Exception:
-                logger.warning(f"Invalid user_id format: {user_id}")
-                user_obj_id = None
-
         scan_data = {
-            "user_id": user_obj_id,
+            "name": name,
             "result": prediction,
             "confidence": round(confidence, 3),
             "severity": severity,
@@ -237,9 +225,9 @@ async def predict(
         }
 
         db_id = None
-        if scan_collection is not None:
+        if mongo_collection is not None:
             try:
-                result = scan_collection.insert_one(scan_data)
+                result = mongo_collection.insert_one(scan_data)
                 db_id = str(result.inserted_id)
                 logger.info(f"Saved to MongoDB with ID: {db_id}")
             except Exception as db_error:
@@ -247,6 +235,8 @@ async def predict(
                 logger.error(traceback.format_exc())
         else:
             logger.warning("Skipping database save - MongoDB not initialized")
+
+        scan_data.pop('_id', None)
 
         response_data = {
             **scan_data,
@@ -265,43 +255,17 @@ async def predict(
         logger.error(f"Unhandled error: {str(e)}")
         logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
-
-# --- Get scans with user info (aggregation join) ---
+    
 @app.get("/scans")
 async def get_recent_scans(limit: int = 100):
     try:
-        if scan_collection is None or user_collection is None:
+        if mongo_collection is None:
             raise HTTPException(status_code=500, detail="MongoDB not initialized")
 
-        pipeline = [
-            {"$sort": {"scanned_at": -1}},
-            {"$limit": limit},
-            {
-                "$lookup": {
-                    "from": USER_COLLECTION,
-                    "localField": "user_id",
-                    "foreignField": "_id",
-                    "as": "user_info"
-                }
-            },
-            {"$unwind": {"path": "$user_info", "preserveNullAndEmptyArrays": True}},
-            {
-                "$project": {
-                    "result": 1,
-                    "confidence": 1,
-                    "severity": 1,
-                    "probabilities": 1,
-                    "image_url": 1,
-                    "location_name": 1,
-                    "lat": 1,
-                    "lon": 1,
-                    "scanned_at": 1,
-                    "user_name": "$user_info.name",
-                }
-            }
-        ]
+        # Get most recent scans
+        results = mongo_collection.find().sort("scanned_at", -1).limit(limit)
 
-        results = scan_collection.aggregate(pipeline)
+        # Convert ObjectId to string and ensure JSON serializable
         scans = []
         for doc in results:
             doc["_id"] = str(doc["_id"])
@@ -315,3 +279,4 @@ async def get_recent_scans(limit: int = 100):
 
 # --- Serve uploaded images ---
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
