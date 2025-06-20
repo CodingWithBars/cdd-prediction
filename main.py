@@ -214,6 +214,7 @@ async def predict(
         tz = pytz.timezone("Asia/Manila")
         scanned_at = datetime.now(tz).isoformat()
 
+        #user added
         scan_data = {
             "user_name": user_name,  # 👈 Include user_name in the saved data
             "result": prediction,
