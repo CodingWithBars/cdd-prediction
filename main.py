@@ -180,6 +180,8 @@ async def predict(
     file: UploadFile = File(...),
     latitude: Optional[str] = Form(None),
     longitude: Optional[str] = Form(None),
+    user_name: Optional[str] = Form("Anonymous"),
+    user_id: Optional[str] = Form(None),
 ):
     try:
         if not file.filename.lower().endswith(tuple(ALLOWED_EXTENSIONS)):
@@ -196,7 +198,7 @@ async def predict(
         with open(upload_path, "wb") as buffer:
             buffer.write(content)
 
-        name, prediction, confidence, severity, probabilities = run_prediction(upload_path)
+        prediction, confidence, severity, probabilities = run_prediction(upload_path)
         image_url = f"{API_BASE_URL}/static/uploads/{filename}"
 
         location_name = "Unknown Location"
@@ -212,7 +214,8 @@ async def predict(
         scanned_at = datetime.now(tz).isoformat()
 
         scan_data = {
-            "name": name,
+            "name": user_name,
+            "user_id": user_id,
             "result": prediction,
             "confidence": round(confidence, 3),
             "severity": severity,
