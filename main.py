@@ -280,3 +280,7 @@ async def get_recent_scans(limit: int = 100):
 # --- Serve uploaded images ---
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+@app.get("/")
+async def root():
+    return {"message": "Chicken Disease Detection API is running 🚀"}
+
